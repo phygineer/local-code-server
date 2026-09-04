@@ -102,7 +102,35 @@ RUN npm install -g @anthropic-ai/claude-code
 # Installs the Ollama binary.
 # Do NOT run `ollama serve` in this container.
 # The CLI will connect to Ollama running on the Mac host via OLLAMA_HOST.
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# RUN curl -fsSL https://ollama.com/install.sh | sh
+
+# -- Extensions
+# Python
+RUN code-server --install-extension ms-python.python
+RUN code-server --install-extension ms-python.debugpy
+
+# Docker
+RUN code-server --install-extension ms-azuretools.vscode-docker
+
+# Config / Infrastructure
+RUN code-server --install-extension redhat.vscode-yaml
+RUN code-server --install-extension tamasfe.even-better-toml
+RUN code-server --install-extension hashicorp.terraform
+RUN code-server --install-extension ms-kubernetes-tools.vscode-kubernetes-tools
+
+# Formatting / Linting
+RUN code-server --install-extension esbenp.prettier-vscode
+RUN code-server --install-extension dbaeumer.vscode-eslint
+
+# Git
+RUN code-server --install-extension eamodio.gitlens
+
+# Quality of life
+RUN code-server --install-extension streetsidesoftware.code-spell-checker
+RUN code-server --install-extension usernamehw.errorlens
+
+# AI
+RUN code-server --install-extension continue.continue
 
 # ── Runtime user ────────────────────────────────────────────────────────────────
 USER coder
