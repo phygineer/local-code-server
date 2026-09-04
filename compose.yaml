@@ -1,0 +1,34 @@
+services:
+  codeserver:
+    build: .
+    pull_policy: never
+    container_name: codeserver
+    restart: unless-stopped
+
+    command:
+      - --bind-addr
+      - 0.0.0.0:8080
+      - --auth
+      - password
+
+    environment:
+      PASSWORD: changeme
+      OLLAMA_HOST: http://host.docker.internal:11434
+
+    ports:
+      - "9999:8080"
+
+    volumes:
+      - system_codeserver_data:/home/coder
+      - ../../Projects:/workspace
+
+    working_dir: /workspace
+
+    networks:
+      - system
+
+volumes:
+  system_codeserver_data:
+
+networks:
+  system:
