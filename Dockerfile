@@ -102,7 +102,7 @@ RUN npm install -g @anthropic-ai/claude-code
 # Installs the Ollama binary.
 # Do NOT run `ollama serve` in this container.
 # The CLI will connect to Ollama running on the Mac host via OLLAMA_HOST.
-# RUN curl -fsSL https://ollama.com/install.sh | sh
+RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # -- Extensions
 # Python
