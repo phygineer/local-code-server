@@ -1,8 +1,10 @@
 services:
+
   codeserver:
     build: .
     pull_policy: never
     container_name: codeserver
+
     restart: unless-stopped
 
     command:
@@ -12,23 +14,22 @@ services:
       - password
 
     environment:
-      PASSWORD: changeme
-      OLLAMA_HOST: http://host.docker.internal:11434
+      PASSWORD: ${CODE_SERVER_PASSWORD:?Set CODE_SERVER_PASSWORD in .env}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
 
     ports:
-      - "9999:8080"
+      - "${CODE_SERVER_PORT:-9999}:8080"
 
     volumes:
+      # Persistent code-server home:
+      # settings, extensions, Claude CLI state, npm user tools, etc.
       - system_codeserver_data:/home/coder
-      - ../../Projects:/workspace
+
+      # Explicit host workspace exposed to Claude Code and development tools.
+      # This variable is required so Compose fails safely if it is not configured.
+      - ${WORKSPACE_PATH:?Set WORKSPACE_PATH in .env}:/workspace
 
     working_dir: /workspace
 
-    networks:
-      - system
-
 volumes:
   system_codeserver_data:
-
-networks:
-  system:

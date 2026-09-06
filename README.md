@@ -1,12 +1,18 @@
-# Sandboxed AI Development Environment
+# Local Code Server
 
-A Docker-based development environment for running **code-server**, **Claude Code CLI**, and local AI tooling while keeping the AI agent isolated from the host machine.
+A Docker-based development environment for running **code-server**, **Claude Code CLI**, and local AI tooling while keeping the AI agent isolated from most of the host machine.
 
-The main idea is simple:
+The core idea is simple:
 
-> Give the AI agent access to the project directory it needs, rather than giving it access to the entire host machine.
+> Give the AI agent access only to the project directory you intentionally mount, instead of giving it access to your entire host filesystem.
 
-The development environment runs inside Docker, while Ollama can run natively on the Mac and provide local models to tools inside the container.
+This setup is designed for local development on macOS with:
+
+* code-server running inside Docker
+* Claude Code CLI running inside the code-server container
+* Ollama running natively on the Mac
+* Ollama CLI inside the container connecting back to the Mac host
+* a configurable host project directory mounted as `/workspace`
 
 ---
 
@@ -18,12 +24,12 @@ The development environment runs inside Docker, while Ollama can run natively on
 │                                                              │
 │   Browser                                                    │
 │      │                                                       │
-│      │ localhost:9999                                        │
+│      │ http://localhost:9999                                 │
 │      ▼                                                       │
 │   ┌──────────────────────────────────────────────┐           │
 │   │ Docker: code-server                         │           │
 │   │                                              │           │
-│   │  VS Code / code-server                      │           │
+│   │  code-server / VS Code                      │           │
 │   │  Claude Code CLI                            │           │
 │   │  Ollama CLI                                 │           │
 │   │  Git                                        │           │
@@ -36,10 +42,10 @@ The development environment runs inside Docker, while Ollama can run natively on
 │   │  /workspace  ───────────────┐               │           │
 │   └─────────────────────────────│────────────────┘           │
 │                                 │                            │
-│                          bind-mounted                        │
+│                           bind mount                         │
 │                                 │                            │
 │                                 ▼                            │
-│                         ../System                            │
+│                         Host project                         │
 │                                                              │
 │                                                              │
 │   Ollama                                                     │
@@ -57,9 +63,9 @@ The development environment runs inside Docker, while Ollama can run natively on
 
 # Why This Exists
 
-AI coding agents such as Claude Code can execute shell commands, modify files, install dependencies, run tests, and perform many other development operations.
+AI coding agents such as Claude Code can execute shell commands, modify files, install dependencies, run tests, inspect repositories, and perform many other development operations.
 
-Running such an agent directly on the host means it potentially operates in an environment containing:
+Running such an agent directly on the host means it may operate in an environment containing:
 
 ```text
 ~/Documents
@@ -73,17 +79,17 @@ local configuration
 host applications
 ```
 
-Instead, Claude Code is executed **inside a Docker container**.
+Instead, Claude Code is executed inside a Docker container.
 
-The container receives access only to the directories and services intentionally exposed to it.
+The container receives access only to the files, directories, and services that are deliberately exposed to it.
 
 ---
 
 # Isolation Model
 
-The Docker container itself acts as the development sandbox.
+The code-server container itself acts as the development sandbox.
 
-There is no separate "sandbox container."
+There is no separate sandbox container.
 
 ```text
 Host
@@ -95,8 +101,8 @@ Host
 │                           │
 │ Claude Code               │
 │ Ollama CLI                │
-│ compilers                 │
 │ shell                     │
+│ compilers                 │
 │ development tools         │
 │                           │
 │ /workspace                │
@@ -107,17 +113,9 @@ Host
         Host project
 ```
 
-Claude Code executes commands **inside the container**, not directly on macOS.
+Claude Code executes commands inside the Linux container, not directly in macOS.
 
 For example:
-
-```bash
-rm -rf /tmp/*
-```
-
-affects the container.
-
-Similarly:
 
 ```bash
 apt install ...
@@ -125,41 +123,48 @@ npm install ...
 pip install ...
 ```
 
-runs inside the Linux container.
+run inside the container.
 
-The host operating system is not directly modified by these commands.
+Likewise:
+
+```bash
+rm -rf /tmp/*
+```
+
+affects the container filesystem.
+
+The host operating system is not directly modified by those commands unless the affected path is a mounted host directory.
 
 ---
 
-# Important: Mounted Directories Are NOT Isolated
+# Important: Mounted Directories Are Writable
 
-Docker isolation does **not** protect writable bind mounts from processes inside the container.
+Docker isolation does not protect writable bind mounts from processes inside the container.
 
-For example:
+The workspace is mounted using:
 
 ```yaml
-volumes:
-  - ../System:/workspace
+- ${WORKSPACE_PATH}:/workspace
 ```
 
-means:
+That means:
 
 ```text
 Container /workspace
         │
         ▼
-Host ../System
+Host WORKSPACE_PATH
 ```
 
-Claude can therefore:
+Claude Code can therefore:
 
-* read files in the project
+* read project files
+* modify project files
 * create files
-* modify files
 * delete files
 * rename files
 
-This is intentional because Claude needs access to the source code.
+This is intentional because the coding agent needs access to the source code.
 
 For example:
 
@@ -167,11 +172,9 @@ For example:
 rm -rf /workspace/*
 ```
 
-would delete files from the **host project directory**.
+would delete files from the mounted host project directory.
 
-The sandbox protects the rest of the host, not the mounted project itself.
-
-Git should therefore be used as an additional recovery mechanism.
+Git should be used as an additional recovery mechanism.
 
 ---
 
@@ -186,13 +189,10 @@ Unless explicitly mounted or otherwise exposed, the container cannot directly ac
 ~/.ssh
 ~/.aws
 ~/.kube
-/etc
 /
 ```
 
-Do **not** mount these directories unless they are genuinely required.
-
-In particular, avoid mounts such as:
+Avoid broad mounts such as:
 
 ```yaml
 - ~/:/host-home
@@ -204,7 +204,7 @@ or:
 - /:/host
 ```
 
-Doing so would significantly weaken the isolation boundary.
+because they significantly weaken the intended isolation boundary.
 
 ---
 
@@ -218,96 +218,139 @@ Avoid:
 
 unless it is absolutely necessary.
 
-Giving a container access to the host Docker daemon can effectively give processes inside that container control over the host's Docker environment and can undermine the intended sandbox.
+Giving the container access to the host Docker daemon can effectively allow processes inside the container to control other containers and host-mounted resources.
 
 For this environment, the Docker socket should remain unavailable.
 
 ---
 
-# Components
+# Configuration
 
-## code-server
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`.
+
+Example:
+
+```dotenv
+WORKSPACE_PATH=/Users/yourname/Projects/my-project
+CODE_SERVER_PASSWORD=change-me
+CODE_SERVER_PORT=9999
+OLLAMA_HOST=http://host.docker.internal:11434
+```
+
+Do not commit `.env`.
+
+---
+
+# Workspace Configuration
+
+`WORKSPACE_PATH` defines which host directory is exposed to the AI development environment.
+
+Example:
+
+```dotenv
+WORKSPACE_PATH=/Users/yourname/Projects/my-project
+```
+
+Inside the container it appears as:
+
+```text
+/workspace
+```
+
+This is the most important filesystem security setting in the project.
+
+Only mount the directory you actually want Claude Code to access.
+
+Avoid:
+
+```dotenv
+WORKSPACE_PATH=/Users/yourname
+```
+
+Prefer:
+
+```dotenv
+WORKSPACE_PATH=/Users/yourname/Projects/specific-project
+```
+
+The Compose file requires this value explicitly.
+
+If `WORKSPACE_PATH` is missing, Docker Compose fails instead of mounting an unexpected directory.
+
+---
+
+# code-server
 
 code-server provides VS Code through a browser.
 
-The UI is exposed on:
+The default URL is:
 
 ```text
 http://localhost:9999
 ```
 
-Authentication is enabled using:
+Authentication is enabled using the password configured in `.env`:
 
-```yaml
-command:
-  - --bind-addr
-  - 0.0.0.0:8080
-  - --auth
-  - password
+```dotenv
+CODE_SERVER_PASSWORD=change-me
 ```
 
-with:
-
-```yaml
-environment:
-  PASSWORD: changeme
-```
-
-Change this password before exposing code-server beyond localhost.
+Change this value before exposing code-server outside your local machine.
 
 ---
 
 # Claude Code CLI
 
-Claude Code is installed inside the container.
+Claude Code runs inside the container.
 
-Example:
-
-```bash
-claude
-```
-
-Because Claude executes inside Docker, commands initiated by Claude execute in the container's Linux environment.
-
-Start Claude from the project directory:
+Start it from the project directory:
 
 ```bash
 cd /workspace
 claude
 ```
 
-This naturally scopes the coding session to the mounted repository.
+Because Claude is running inside Docker, tools and shell commands executed by Claude run inside the container environment.
 
-Claude authentication/configuration can be stored under `/home/coder`.
+The primary writable host location exposed to it is `/workspace`.
 
 ---
 
 # Ollama
 
-Ollama itself runs **natively on the Mac**, rather than inside this Docker container.
+Ollama runs natively on the host Mac.
 
-The container contains the Ollama CLI, but it does not run:
+The code-server container includes the Ollama CLI but does not run its own Ollama server.
+
+Do not run:
 
 ```bash
 ollama serve
 ```
 
-Instead, the CLI connects to Ollama running on macOS.
+inside the code-server container.
 
-Docker Desktop exposes the host through:
+Instead, the CLI connects to the Mac host using:
+
+```dotenv
+OLLAMA_HOST=http://host.docker.internal:11434
+```
+
+Docker Desktop provides:
 
 ```text
 host.docker.internal
 ```
 
-Therefore Compose configures:
+as a hostname that containers can use to reach the host machine.
 
-```yaml
-environment:
-  OLLAMA_HOST: http://host.docker.internal:11434
-```
-
-The resulting connection is:
+The connection is:
 
 ```text
 Ollama CLI
@@ -318,8 +361,7 @@ inside container
 host.docker.internal:11434
       │
       ▼
-Ollama
-running on macOS
+Ollama running on macOS
 ```
 
 ---
@@ -338,7 +380,7 @@ Expected:
 http://host.docker.internal:11434
 ```
 
-Test the API directly:
+Test the API:
 
 ```bash
 curl http://host.docker.internal:11434/api/tags
@@ -350,56 +392,36 @@ Or use the Ollama CLI:
 ollama list
 ```
 
-The models displayed are the models installed by Ollama on the Mac.
+The models shown are the models installed on the host Mac.
 
-Running:
+You can also run:
 
 ```bash
 ollama run <model>
 ```
 
-uses the model running through the host Ollama server.
+The request goes to the host Ollama server.
 
-The model itself does not need to be copied into the code-server container.
+The models are not copied into the code-server container.
 
 ---
 
 # Local Model Isolation
 
-There are two separate pieces involved:
+There are two different layers involved:
 
 ```text
-AI client / agent
-        │
-        │ HTTP
-        ▼
+AI agent / client
+       │
+       ▼
 Ollama inference server
 ```
 
-The model running through Ollama does not automatically receive access to the host filesystem.
+A plain local model does not automatically gain filesystem access.
 
-It receives the information sent to it by the client.
+It only receives the data sent to it by the client.
 
-For example:
-
-```text
-Claude/local agent
-      │
-      │ reads /workspace/file.py
-      │
-      │ sends relevant content
-      ▼
-Ollama
-      │
-      ▼
-Local model
-```
-
-The important security boundary is therefore the **agent/tooling layer**, not merely the model.
-
-A plain LLM cannot independently browse the filesystem.
-
-An agent can, because tools may give it capabilities such as:
+The tool-capable agent is what can access:
 
 ```text
 read_file
@@ -411,30 +433,25 @@ python
 npm
 ```
 
-Running those tools inside Docker limits their filesystem and operating-system access to the container and its explicitly mounted resources.
+Running those tools inside Docker limits their operating-system access to the container and explicitly mounted directories.
+
+The important boundary is therefore the agent/tooling layer, not just the LLM itself.
 
 ---
 
-# Why Ollama Can Run Outside the Sandbox
+# Why Ollama Can Run Outside the Container
 
-Ollama is primarily being used as an inference server.
+Ollama is primarily acting as an inference server.
 
-The container sends requests such as:
-
-```text
-POST /api/chat
-POST /api/generate
-```
-
-to:
+The code-server container sends HTTP requests to:
 
 ```text
 host.docker.internal:11434
 ```
 
-Ollama returns model output.
+and receives model responses.
 
-The dangerous capabilities are generally the **tools around the model**:
+The potentially powerful capabilities remain inside the code-server container:
 
 ```text
 LLM
@@ -444,59 +461,33 @@ Agent
 Shell / Files / Git / Tools
 ```
 
-Those tools remain inside the Docker container.
-
-Therefore it is reasonable to run Ollama natively while keeping the AI coding agent itself containerized.
+This allows Ollama to run efficiently on the Mac while Claude Code and other AI tooling remain containerized.
 
 ---
 
 # Persistent Home Directory
 
-code-server stores configuration, extensions, caches, authentication information, and user-installed tooling under:
+code-server stores configuration, extensions, caches, CLI state, and user-installed tools under:
 
 ```text
 /home/coder
 ```
 
-A named Docker volume can preserve this data:
+A named Docker volume preserves this directory:
 
 ```yaml
-volumes:
-  - system_codeserver_data:/home/coder
+system_codeserver_data:/home/coder
 ```
 
-This means rebuilding the image does not necessarily remove the developer environment's persistent user state.
+This helps preserve:
 
----
+* code-server settings
+* extensions
+* Claude CLI state
+* npm-installed user tools
+* shell configuration
 
-# Workspace
-
-The host repository is mounted as:
-
-```yaml
-volumes:
-  - ../System:/workspace
-```
-
-and the container uses:
-
-```yaml
-working_dir: /workspace
-```
-
-Therefore terminals normally start inside the repository.
-
-Example:
-
-```bash
-pwd
-```
-
-should return:
-
-```text
-/workspace
-```
+across image rebuilds.
 
 ---
 
@@ -529,37 +520,31 @@ htop
 build-essential
 ```
 
-This allows Claude Code to build, test, inspect, and modify most projects without requiring access to host development tools.
+This allows most development work to happen inside the container rather than on the host.
 
 ---
 
 # Passwordless sudo
 
-The `coder` user is configured with:
+The `coder` user has passwordless sudo inside the container.
 
-```text
-coder ALL=(ALL) NOPASSWD:ALL
-```
-
-This means Claude or the developer can execute:
+That means this works:
 
 ```bash
 sudo apt-get install ...
 ```
 
-inside the container.
-
-This gives processes effectively root-level control **inside the container**.
+This gives processes effectively root-level control inside the container.
 
 It does not normally provide root access to macOS.
 
-However, root inside a container should still be treated as powerful, especially if additional host resources are mounted later.
+However, root inside a container is still powerful if broad host mounts or sensitive sockets are exposed.
 
 ---
 
 # Security Boundary
 
-The intended security boundary is:
+The intended boundary is:
 
 ```text
                  TRUSTED / HOST
@@ -579,7 +564,7 @@ The intended security boundary is:
 │             │ shell              │       │
 │             │ dev tools          │       │
 │             │                    │       │
-│             │ /workspace ────────┼───────┼── allowed project
+│             │ /workspace ────────┼───────┼── explicitly mounted project
 │             └────────────────────┘       │
 │                                          │
 │ Ollama :11434 ◄──── HTTP ────────────────┤
@@ -593,7 +578,7 @@ Only explicitly exposed resources should cross this boundary.
 
 # What This Protects Against
 
-This setup reduces the impact of accidental or undesirable agent commands.
+This setup reduces the impact of accidental or undesirable AI-agent commands.
 
 For example, if Claude runs:
 
@@ -603,7 +588,7 @@ sudo apt remove ...
 
 the container is affected rather than macOS.
 
-If Claude installs hundreds of packages:
+If Claude installs packages:
 
 ```bash
 npm install ...
@@ -611,15 +596,13 @@ pip install ...
 apt install ...
 ```
 
-they remain inside the container environment unless they write into a mounted directory.
+they remain inside the container unless they write to mounted directories.
 
-If the environment becomes corrupted, it can simply be rebuilt:
+If the container becomes corrupted, rebuild it:
 
 ```bash
 docker compose down
-
 docker compose build --no-cache
-
 docker compose up -d
 ```
 
@@ -627,92 +610,66 @@ The host development environment remains largely untouched.
 
 ---
 
-# What This Does NOT Protect Against
+# What This Does Not Protect Against
 
-This setup is isolation, but it is **not a perfect security boundary**.
+This setup is useful isolation, but it is not a perfect security boundary.
 
 Claude can still:
 
-1. Modify or delete files in writable mounted directories.
-2. Access network services reachable from the container.
-3. Send data to external APIs if outbound Internet access is allowed.
-4. Access credentials deliberately placed inside the container.
-5. Modify persistent `/home/coder` data.
-6. Execute arbitrary commands as `coder`, and effectively as root because passwordless sudo is enabled.
+1. modify or delete files under `/workspace`
+2. access network services reachable from the container
+3. send data to external APIs if outbound Internet access is available
+4. access credentials deliberately placed inside the container
+5. modify persistent `/home/coder` data
+6. execute commands with sudo inside the container
 
 For stronger isolation, additional controls can be introduced later, including:
 
 ```text
-read-only root filesystem
-dropped Linux capabilities
+cap_drop
 no-new-privileges
+read-only root filesystem
 resource limits
 network restrictions
-separate secrets
 non-root execution without sudo
 temporary filesystems
 dedicated per-project containers
 ```
 
-The current design prioritizes a practical development environment while still providing a meaningful boundary between AI coding tools and the Mac host.
-
 ---
 
-# Recommended Docker Compose
+# Setup
 
-```yaml
-services:
-
-  codeserver:
-    build: .
-    pull_policy: never
-    container_name: codeserver
-
-    restart: unless-stopped
-
-    command:
-      - --bind-addr
-      - 0.0.0.0:8080
-      - --auth
-      - password
-
-    environment:
-      PASSWORD: changeme
-      OLLAMA_HOST: http://host.docker.internal:11434
-
-    ports:
-      - "9999:8080"
-
-    volumes:
-      - system_codeserver_data:/home/coder
-      - ../System:/workspace
-
-    working_dir: /workspace
-
-    networks:
-      - system
-
-volumes:
-  system_codeserver_data:
-
-networks:
-  system:
-```
-
----
-
-# Starting the Environment
-
-Build:
+Clone the repository:
 
 ```bash
-docker compose build codeserver
+git clone https://github.com/phygineer/local-code-server.git
+cd local-code-server
 ```
 
-Start:
+Create the local configuration:
 
 ```bash
-docker compose up -d codeserver
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+vim .env
+```
+
+Set at minimum:
+
+```dotenv
+WORKSPACE_PATH=/absolute/path/to/your/project
+CODE_SERVER_PASSWORD=your-password
+```
+
+Start the environment:
+
+```bash
+docker compose up -d --build
 ```
 
 Open:
@@ -721,13 +678,21 @@ Open:
 http://localhost:9999
 ```
 
-Log in using the configured code-server password.
-
 ---
 
 # Verify the Environment
 
-Open a terminal inside code-server.
+Inside the code-server terminal:
+
+```bash
+pwd
+```
+
+Expected:
+
+```text
+/workspace
+```
 
 Check Claude:
 
@@ -741,29 +706,16 @@ Check Ollama:
 ollama --version
 ```
 
-Check the configured Ollama server:
-
-```bash
-echo $OLLAMA_HOST
-```
-
-Check connectivity:
+Check the host Ollama connection:
 
 ```bash
 ollama list
 ```
 
-Check the workspace:
+Check Git:
 
 ```bash
-pwd
 git status
-```
-
-Expected working directory:
-
-```text
-/workspace
 ```
 
 ---
@@ -777,7 +729,7 @@ cd /workspace
 claude
 ```
 
-Claude can now inspect and modify the repository and execute development commands inside the Docker environment.
+Claude can now inspect and modify the mounted repository and execute development commands inside the Docker environment.
 
 The intended model is:
 
@@ -802,24 +754,20 @@ The intended model is:
 
 The core principle is:
 
-> **Give the AI access to the workspace and tools it needs, while keeping everything else outside its execution environment.**
+> Give the AI access to the workspace and tools it needs, while keeping everything else outside its execution environment.
 
 ---
 
-# Security Checklist
+# Recommended Security Checklist
 
-Before allowing an AI coding agent to execute commands automatically:
-
-* Keep host mounts limited to the required repository.
+* Keep `WORKSPACE_PATH` limited to the required repository.
 * Do not mount `/`.
-* Do not mount the entire macOS home directory.
-* Do not mount `~/.ssh` unless absolutely necessary.
+* Do not mount your whole home directory.
+* Do not mount `~/.ssh` unless necessary.
 * Do not mount cloud credentials unnecessarily.
-* Do not expose the Docker socket.
-* Keep important project changes committed to Git.
-* Do not place unnecessary secrets inside `/workspace`.
-* Keep code-server bound to trusted interfaces or protect it with proper authentication.
-* Treat `/workspace` as writable and therefore accessible to the agent.
-* Remember that network access is a separate capability from filesystem isolation.
-
-This gives a practical **AI development sandbox** without requiring a separate VM or a dedicated sandbox container.
+* Do not mount `/var/run/docker.sock`.
+* Keep important changes committed to Git.
+* Do not store unnecessary secrets under `/workspace`.
+* Change the default code-server password.
+* Remember that `/workspace` is writable by the agent.
+* Treat network access as a separate capability from filesystem isolation.
