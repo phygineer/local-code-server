@@ -22,7 +22,7 @@ services:
 
     volumes:
       # Persistent code-server home:
-      # settings, extensions, Claude CLI state, npm user tools, etc.
+      # settings, extensions, Claude/Codex CLI state, npm user tools, etc.
       - system_codeserver_data:/home/coder
 
       # Explicit host workspace exposed to Claude Code and development tools.

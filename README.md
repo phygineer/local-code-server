@@ -1,6 +1,6 @@
 # Local Code Server
 
-A Docker-based development environment for running **code-server**, **Claude Code CLI**, and local AI tooling while keeping the AI agent isolated from most of the host machine.
+A Docker-based development environment for running **code-server**, **Claude Code CLI**, **Codex CLI**, and local AI tooling while keeping the AI agent isolated from most of the host machine.
 
 The core idea is simple:
 
@@ -10,6 +10,7 @@ This setup is designed for local development on macOS with:
 
 * code-server running inside Docker
 * Claude Code CLI running inside the code-server container
+* Codex CLI running inside the code-server container
 * Ollama running natively on the Mac
 * Ollama CLI inside the container connecting back to the Mac host
 * a configurable host project directory mounted as `/workspace`
@@ -322,6 +323,21 @@ The primary writable host location exposed to it is `/workspace`.
 
 ---
 
+# Codex CLI
+
+Codex runs inside the container and stores its login and configuration in the persistent `/home/coder` volume.
+
+Start it from the project directory:
+
+```bash
+cd /workspace
+codex
+```
+
+On first use, follow the interactive sign-in flow.
+
+---
+
 # Ollama
 
 Ollama runs natively on the host Mac.
@@ -498,6 +514,7 @@ The image includes:
 ```text
 code-server
 Claude Code CLI
+Codex CLI
 Ollama CLI
 Git
 OpenSSH client
@@ -698,6 +715,12 @@ Check Claude:
 
 ```bash
 claude --version
+```
+
+Check Codex:
+
+```bash
+codex --version
 ```
 
 Check Ollama:

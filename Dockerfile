@@ -1,4 +1,4 @@
-# Custom code-server image — browser-based VS Code + dev tooling + Claude Code CLI.
+# Custom code-server image — browser-based VS Code + dev tooling + AI coding CLIs.
 # Ollama server runs on the Mac host; this image only installs the Ollama CLI.
 
 FROM codercom/code-server:latest
@@ -97,6 +97,9 @@ RUN echo "coder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder \
 
 # ── Claude Code CLI ─────────────────────────────────────────────────────────────
 RUN npm install -g @anthropic-ai/claude-code
+
+# ── Codex CLI ────────────────────────────────────────────────────────────────────
+RUN npm install -g @openai/codex@latest
 
 # ── Ollama CLI ──────────────────────────────────────────────────────────────────
 # Installs the Ollama binary.
