@@ -39,45 +39,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Go ──────────────────────────────────────────────────────────────────────────
-ARG GO_VERSION=1.23.4
-
-RUN ARCH="$(dpkg --print-architecture)" \
-    && case "$ARCH" in \
-        amd64) GOARCH=amd64 ;; \
-        arm64) GOARCH=arm64 ;; \
-        *) GOARCH="$ARCH" ;; \
-    esac \
-    && curl -fsSL \
-        "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" \
-        -o /tmp/go.tgz \
-    && tar -C /usr/local -xzf /tmp/go.tgz \
-    && rm /tmp/go.tgz
-
-# ── Terraform ───────────────────────────────────────────────────────────────────
-ARG TF_VERSION=1.12.2
-
-RUN ARCH="$(dpkg --print-architecture)" \
-    && case "$ARCH" in \
-        amd64) TFARCH=amd64 ;; \
-        arm64) TFARCH=arm64 ;; \
-        *) TFARCH="$ARCH" ;; \
-    esac \
-    && curl -fsSL \
-        "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_${TFARCH}.zip" \
-        -o /tmp/tf.zip \
-    && unzip -o /tmp/tf.zip -d /usr/local/bin terraform \
-    && rm /tmp/tf.zip
-
-# ── kubectl ─────────────────────────────────────────────────────────────────────
-ARG KUBECTL_VERSION=v1.35.5
-
-RUN ARCH="$(dpkg --print-architecture)" \
-    && curl -fsSL \
-        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" \
-        -o /usr/local/bin/kubectl \
-    && chmod 0755 /usr/local/bin/kubectl
-
 # ── User environment ────────────────────────────────────────────────────────────
 ENV PATH="/usr/local/go/bin:/home/coder/go/bin:/home/coder/.local/bin:$PATH"
 
@@ -100,40 +61,6 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # ── Codex CLI ────────────────────────────────────────────────────────────────────
 RUN npm install -g @openai/codex@latest
-
-# ── Ollama CLI ──────────────────────────────────────────────────────────────────
-# Installs the Ollama binary.
-# Do NOT run `ollama serve` in this container.
-# The CLI will connect to Ollama running on the Mac host via OLLAMA_HOST.
-RUN curl -fsSL https://ollama.com/install.sh | sh
-
-# -- Extensions
-# Python
-RUN code-server --install-extension ms-python.python
-RUN code-server --install-extension ms-python.debugpy
-RUN code-server --install-extension Anthropic.claude-code
-# Docker
-RUN code-server --install-extension ms-azuretools.vscode-docker
-
-# Config / Infrastructure
-RUN code-server --install-extension redhat.vscode-yaml
-RUN code-server --install-extension tamasfe.even-better-toml
-RUN code-server --install-extension hashicorp.terraform
-RUN code-server --install-extension ms-kubernetes-tools.vscode-kubernetes-tools
-
-# Formatting / Linting
-RUN code-server --install-extension esbenp.prettier-vscode
-RUN code-server --install-extension dbaeumer.vscode-eslint
-
-# Git
-RUN code-server --install-extension eamodio.gitlens
-
-# Quality of life
-RUN code-server --install-extension streetsidesoftware.code-spell-checker
-RUN code-server --install-extension usernamehw.errorlens
-
-# AI
-RUN code-server --install-extension continue.continue
 
 # ── Runtime user ────────────────────────────────────────────────────────────────
 USER coder
