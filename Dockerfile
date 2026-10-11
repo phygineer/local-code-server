@@ -111,7 +111,7 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 # Python
 RUN code-server --install-extension ms-python.python
 RUN code-server --install-extension ms-python.debugpy
-
+RUN code-server --install-extension Anthropic.claude-code
 # Docker
 RUN code-server --install-extension ms-azuretools.vscode-docker
 
