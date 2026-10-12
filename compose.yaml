@@ -15,7 +15,6 @@ services:
 
     environment:
       PASSWORD: ${CODE_SERVER_PASSWORD:?Set CODE_SERVER_PASSWORD in .env}
-      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
 
     ports:
       - "${CODE_SERVER_PORT:-9999}:8080"
